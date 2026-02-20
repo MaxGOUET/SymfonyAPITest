@@ -6,6 +6,8 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\Routing\Attribute\Route;
 use App\Repository\ComputersRepository;
+use App\Repository\CpuRepository;
+use App\Entity\Cpu;
 use Symfony\Component\Serializer\SerializerInterface;
 use Symfony\Component\HttpFoundation\Request;
 use Doctrine\ORM\EntityManagerInterface;
@@ -36,19 +38,31 @@ final class ApiComputersController extends AbstractController
     }
 
     #[Route('/api/computers', name: 'app_api_computers_create', methods: ['POST'])]
-    public function create(Request $request, EntityManagerInterface $entityManager, ComputersRepository $computersRepository, SerializerInterface $serializer): JsonResponse
+    public function create(Request $request, EntityManagerInterface $entityManager, ComputersRepository $computersRepository, CpuRepository $cpuRepository, SerializerInterface $serializer): JsonResponse
     {
-        if(!$request->request->get('brand') || !$request->request->get('model') || !$request->request->get('cpu_id')) {
-            return new JsonResponse(['error' => true, 'message' => 'Brand, model, and cpu_id are required'], status: 400);
+        if(!$request->request->get('brand') || !$request->request->get('model') || !$request->request->get('cpu_brand') || !$request->request->get('cpu_model') || !$request->request->get('cpu_cores')) {
+            return new JsonResponse(['error' => true, 'message' => 'Brand, model, and CPU details are required'], status: 400);
         }
         
         $computer = new Computers();
         $computer->setBrand($request->request->get('brand'));
         $computer->setModel($request->request->get('model'));
         
-        $cpu = $entityManager->getRepository('App\Entity\Cpu')->find($request->request->get('cpu_id'));
+        $cpu = $cpuRepository->createQueryBuilder('c')
+            ->andWhere('c.brand = :brand')
+            ->andWhere('c.model = :model')
+            ->setParameter('brand', $request->request->get('cpu_brand'))
+            ->setParameter('model', $request->request->get('cpu_model'))
+            ->getQuery()
+            ->getOneOrNullResult();
+       
         if (!$cpu) {
-            return new JsonResponse(['error' => true, 'message' => 'Invalid cpu_id'], status: 400);
+            $cpu = new Cpu();
+            $cpu->setBrand($request->request->get('cpu_brand'));
+            $cpu->setModel($request->request->get('cpu_model'));
+            $cpu->setCores($request->request->get('cpu_cores'));
+            $entityManager->persist($cpu);
+            $entityManager->flush();
         }
         $computer->setCpu($cpu);
         
@@ -57,9 +71,5 @@ final class ApiComputersController extends AbstractController
     
         $data = $serializer->serialize($computer, 'json');
         return new JsonResponse($data, json: true, status: 201);
-    }
-
-
-     
-    
+    } 
 }
